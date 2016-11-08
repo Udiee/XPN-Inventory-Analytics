@@ -1,0 +1,140 @@
+---
+title: "Project"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("C:/Users/Uduak/Dropbox/MSPA/498/Team XPN/Week3/Data")
+library(lubridate)
+library(dplyr)
+library(stargazer)
+library(pastecs)
+library(zoo)
+
+
+```
+
+
+
+```{r read_data}
+
+data.2011 <- read.csv("2011 MVT Location Q.csv", stringsAsFactors = FALSE)
+data.2012 <- read.csv("2012 MVT Location Q.csv", stringsAsFactors = FALSE)
+data.2013 <- read.csv("2013 MVT Location Q.csv", stringsAsFactors = FALSE)
+data.2014 <- read.csv("2014 MVT Location Q.csv", stringsAsFactors = FALSE)
+data.2015 <- read.csv("2015 MVT Location Q.csv", stringsAsFactors = FALSE)
+FastMover <- read.csv("2015 Fast Mover Review.csv", stringsAsFactors = FALSE)
+FastMover2016 <- read.csv("2016 Fast Mover Review.csv", stringsAsFactors = FALSE)
+
+```
+
+
+```{r cleaning_ data}
+
+data.2011.clean <- subset(data.2011,select = c(Material,Fast,Item,Posting,MvT,Quantity,uom,Local.Value,Group.Value))
+data.2012.clean <- subset(data.2012,select = c(Material,Fast,Item,Posting,MvT,Quantity,uom,Local.Value,Group.Value))
+data.2013.clean <- subset(data.2013,select = c(Material,Fast,Item,Posting,MvT,Quantity,UOM,Local.Value,Group.Value))
+data.2014.clean <- subset(data.2014,select = c(Material,Fast,Item,Posting,MvT,Quantity,UOM,Local.Value,Group.Value))
+
+colnames(data.2011.clean) <- colnames(data.2014.clean)
+colnames(data.2012.clean) <- colnames(data.2014.clean)
+colnames(data.2013.clean) <- colnames(data.2014.clean)
+
+
+
+
+
+
+```
+
+
+```{r transforming.data}
+
+data.all <- rbind(data.2011.clean,data.2012.clean)
+data.all <- rbind(data.all,data.2013.clean)
+data.all <- rbind(data.all,data.2014.clean)
+
+#Subset data.all to obtain list of all fast items
+FastData <- data.all[data.all$Fast=="Yes",]
+
+#remove the Fast Data column as it is no longer needed
+FastData$Fast <- NULL
+
+
+#converting Posting to standard data notation
+
+FastData$Posting <- gsub("\\.","-",FastData$Posting)
+FastData$Posting <- dmy(FastData$Posting)
+
+FastData$Quantity <- as.numeric(gsub(",","",FastData$Quantity))
+FastData$Local.Value <- as.numeric(gsub(",","",FastData$Local.Value))
+FastData$Group.Value <- as.numeric(gsub(",","",FastData$Group.Value))
+
+FastData$Issue.Receipt <- ifelse(FastData$Quantity>=0,1,0)
+
+```
+
+#column list
+```{r }
+str(FastData)
+str(FastMover)
+
+
+```
+
+
+```{r  missing.values}
+paste0("Missing Values by Variables :")
+sapply(FastData, function(x) {sum(is.na(x))})
+
+```
+
+#Comparing Mvt Material variable to Fast Mover Material variable
+```{r  }
+paste0("Number of Transactional Materials :" , length(unique(FastData$Material)))
+paste0("Number of Fast Mover Materials :" , length(unique(FastMover$Material)))
+MvtMaterials <- as.data.frame(sort(unique(FastData$Material)))
+FastMoverMaterials <- as.data.frame(sort(FastMover$Material))
+colnames(MvtMaterials) <- "Materials"
+colnames(FastMoverMaterials) <- "Materials"
+
+# Fast Mover review Materials that did not match with materials in the transactional report
+anti_join(FastMoverMaterials,MvtMaterials)
+
+# Materials in the transactional report that did not match with Fast Movers
+anti_join(MvtMaterials,FastMoverMaterials)
+
+
+```
+
+
+
+
+
+#Analysing Mvt variable; #Subset FastData for all issued inventory
+```{r }
+table(FastData$MvT)
+FastIssue <- filter(FastData, MvT %in% c("201", "221", "261", "291"))
+
+# Convert all issued quantities to postive numbers for ease of analysis
+FastIssue$Quantity <- FastIssue$Quantity * -1
+
+head(FastIssue)
+
+Material_431156 <- FastIssue[FastIssue$Material=="431156",]
+
+plot(FastIssue$Posting[FastIssue$Material=="431156"],
+     FastIssue$Quantity[FastIssue$Material=="431156"], type="l")
+
+
+
+
+```
+
+<!-- ``` -->
+
+
