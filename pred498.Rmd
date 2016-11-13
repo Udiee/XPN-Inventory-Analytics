@@ -14,6 +14,7 @@ library(dplyr)
 library(stargazer)
 library(pastecs)
 library(zoo)
+library(forecast)
 
 
 ```
@@ -39,10 +40,12 @@ data.2011.clean <- subset(data.2011,select = c(Material,Fast,Item,Posting,MvT,Qu
 data.2012.clean <- subset(data.2012,select = c(Material,Fast,Item,Posting,MvT,Quantity,uom,Local.Value,Group.Value))
 data.2013.clean <- subset(data.2013,select = c(Material,Fast,Item,Posting,MvT,Quantity,UOM,Local.Value,Group.Value))
 data.2014.clean <- subset(data.2014,select = c(Material,Fast,Item,Posting,MvT,Quantity,UOM,Local.Value,Group.Value))
+data.2015.clean <- subset(data.2015,select = c(Material,Fast,Item,Posting,MvT,Quantity,UOM,Local.Value,Group.Value))
 
 colnames(data.2011.clean) <- colnames(data.2014.clean)
 colnames(data.2012.clean) <- colnames(data.2014.clean)
 colnames(data.2013.clean) <- colnames(data.2014.clean)
+colnames(data.2015.clean) <- colnames(data.2014.clean)
 
 
 ```
@@ -56,12 +59,14 @@ data.all <- rbind(data.all,data.2014.clean)
 
 #Subset data.all to obtain list of all fast items
 FastData <- data.all[data.all$Fast=="Yes",]
+FastData2015 <- data.2015.clean[data.2015.clean$Fast=="Yes",]
 
 #remove the Fast Data column as it is no longer needed
 FastData$Fast <- NULL
+FastData2015$Fast <- NULL
 
-
-#converting Posting to standard data notation
+#converting Posting to standard data notation, setting quantity, Local Value and Group value to 
+# numeric data type
 
 FastData$Posting <- gsub("\\.","-",FastData$Posting)
 FastData$Posting <- dmy(FastData$Posting)
@@ -71,6 +76,17 @@ FastData$Local.Value <- as.numeric(gsub(",","",FastData$Local.Value))
 FastData$Group.Value <- as.numeric(gsub(",","",FastData$Group.Value))
 
 FastData$Issue.Receipt <- ifelse(FastData$Quantity>=0,1,0)
+
+# Repeated for the test data set - FastData2015
+
+FastData2015$Posting <- gsub("\\.","-",FastData2015$Posting)
+FastData2015$Posting <- dmy(FastData2015$Posting)
+
+FastData2015$Quantity <- as.numeric(gsub("\\,","",FastData2015$Quantity))
+FastData2015$Local.Value <- as.numeric(gsub("\\,","",FastData2015$Local.Value))
+FastData2015$Group.Value <- as.numeric(gsub("\\,","",FastData2015$Group.Value))
+
+FastData2015$Issue.Receipt <- ifelse(FastData2015$Quantity>=0,1,0)
 
 ```
 
@@ -84,8 +100,13 @@ str(FastMover)
 
 
 ```{r  missing.values}
+# Check number of missing values in FastData
 paste0("Missing Values by Variables :")
 sapply(FastData, function(x) {sum(is.na(x))})
+
+# Check number of missing values in FastData2015
+paste0("Missing Values by Variables :")
+sapply(FastData2015, function(x) {sum(is.na(x))})
 
 ```
 
@@ -135,42 +156,96 @@ FastIssue$Month <- month(FastIssue$Posting)
 FastIssue$Year  <- year(FastIssue$Posting)
 head(FastIssue)
 
-#### Monthly summary of data
-#No. of times a material was issued in a particular year and month
+#### Data Summaries
+#Number of times a material was issued by year and month
 month.summ <- 
         FastIssue %>%  
         group_by(Material,Year,Month) %>%
-        summarise(issue.count = n() )
+        summarise(issue.count = n())
 
-#No. of months where a material was issued (in descending order)
+
+#Total number of months a material was issued (in descending order)
 item.summ <- 
         month.summ %>%
         group_by(Material) %>%
-        summarise(month.count = n() ) %>%
+        summarise(month.count = n()) %>%
         arrange(desc(month.count))
         
-# No of times a material appeared in the data (in descending order)
+# Total number of times material appeared in the data set (in descending order)
 data.item <-
         FastIssue %>%
         group_by(Material) %>%
-        summarise(count = n() ) %>%
+        summarise(count = n()) %>%
         arrange(desc(count))
 
-# A data set consisting of a join of the new variables just created above
+# A data set consisting of a join of all monthly summaries
 count.summ <- month.summ %>%
                   left_join(item.summ, by="Material") %>%
                   left_join(data.item, by ="Material") %>%
                   arrange(desc(month.count),Material,Year,Month)
-      
-                
-# Write file containing the monthly count  
-write.csv(item.summ, "Montly Count")
-                               
-  
+
+# Summary of material quantities issued by month and year
+quantity.summ <-
+        FastIssue %>%
+        group_by(Material,Year,Month) %>%
+        summarise(Quantities = sum(Quantity)) %>%
+        arrange(desc(Quantities))
+
+
+# Full data set containing summary of quantities issued by Year and month
+SumQuantity <- left_join(count.summ,quantity.summ,by=c("Material","Year","Month"))
+
+# Dropping materials not stored in the Warehouse
+
+SumQuantity2 <- filter(SumQuantity,!(Material %in% c("495848","495885","495893","578916",
+                                                     "578926","578931","593649","599965",
+                                                     "700148","720330", "724656", "724659")))
+# Write item.sum and count.summ 
+
+write.csv(SumQuantity2, "All Count.csv")
+
+
+##################
+# Training Data #
+#################
+
+
+#### Create sample time-Series data sets. One for a material transacted over 48 months######
+#### and another for a material transacted over less than 48 months######
+
+# Subset data for Material 487999 which has transactions covering the complete 48 months
+# This approach is to be used for all materials that have 48 months of transactions
+MatNo487999 <- filter(SumQuantity2[,-c(4:6)],(Material=="487999"))
+# # Combine separate Year and Month columns into single Date Column
+# MatNo487999$Date <- as.yearmon(paste(MatNo487999$Year, MatNo500076$Month), "%Y %m")
+
+#convert MatNo487999 data frame into time-series data
+Mat487999.ts <- ts(MatNo487999[,c(4)], start=c(2011, 1), end=c(2014, 12), frequency=12)
+Mat487999.ts
+plot(Mat487999.ts)
+
+#Subset data for Material 500076 which has transactions covering 42 months
+# This approach is to be used for all materials that have less than 48 months of transactions
+MatNo500076 <- filter(SumQuantity2[,-c(4:6)],(Material=="500076"))
+
+# Combine separate Year and Month columns into single Date Column
+MatNo500076$Date <- as.yearmon(paste(MatNo500076$Year, MatNo500076$Month), "%Y %m")
+
+#convert MatNo500076 into a regular time-series data using the zoo package
+# Create zoo object
+zMatNo500076 <- zoo(MatNo500076$Quantities, as.yearmon(MatNo500076$Date))
+# create a zero width series consisting of 48 months
+gMatNo500076 <- as.yearmon(seq(as.numeric(as.yearmon("2011-01")),
+                as.numeric(as.yearmon("2014-12")), 1/12))
+
+# merge zMatNo500076 with the zero width series to fill in the missing months with 0s
+zzMatNo500076 <- merge(zMatNo500076, zoo(x=NULL,gMatNo500076), fill = 0)
+# convert to time series
+Mat500076.ts <- as.ts(zzMatNo500076)
+Mat500076.ts
+plot(Mat500076.ts)
 
 
 ```
 
 <!-- ``` -->
-
-
