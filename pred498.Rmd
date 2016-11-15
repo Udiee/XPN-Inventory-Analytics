@@ -110,7 +110,7 @@ sapply(FastData2015, function(x) {sum(is.na(x))})
 
 ```
 
-#Comparing Mvt Material variable to Fast Mover Material variable
+#Comparing Mvt Material variable (2011-2014) to Fast Mover (2015) Material variable
 ```{r  }
 paste0("Number of Transactional Materials :" , length(unique(FastData$Material)))
 paste0("Number of Fast Mover Materials :" , length(unique(FastMover$Material)))
@@ -125,6 +125,21 @@ anti_join(FastMoverMaterials,MvtMaterials)
 # Materials in the transactional report that did not match with Fast Movers
 anti_join(MvtMaterials,FastMoverMaterials)
 
+```
+#Comparing Mvt Material variable (2015) to Fast Mover (2015) Material variable
+```{r  }
+paste0("Number of Transactional Materials :" , length(unique(FastData2015$Material)))
+paste0("Number of Fast Mover Materials :" , length(unique(FastMover$Material)))
+MvtMaterials2015 <- as.data.frame(sort(unique(FastData2015$Material)))
+FastMoverMaterials <- as.data.frame(sort(FastMover$Material))
+colnames(MvtMaterials2015) <- "Materials"
+colnames(FastMoverMaterials) <- "Materials"
+
+# Fast Mover review Materials that did not match with materials in the transactional report
+anti_join(FastMoverMaterials,MvtMaterials2015)
+
+# Materials in the transactional report that did not match with Fast Movers
+anti_join(MvtMaterials2015,FastMoverMaterials)
 
 ```
 
@@ -132,7 +147,7 @@ anti_join(MvtMaterials,FastMoverMaterials)
 
 
 
-#Analysing Mvt variable; #Subset FastData for all issued inventory
+#Analysing 2011-2014 Mvt variable; #Subset FastData for all issued inventory
 ```{r }
 table(FastData$MvT)
 FastIssue <- filter(FastData, MvT %in% c("201", "221", "261", "291"))
@@ -142,13 +157,22 @@ FastIssue$Quantity <- FastIssue$Quantity * -1
 
 head(FastIssue)
 
-# Material_431156 <- FastIssue[FastIssue$Material=="431156",]
-# 
-# plot(FastIssue$Posting[FastIssue$Material=="431156"],
-#      FastIssue$Quantity[FastIssue$Material=="431156"], type="l")
+```
+
+#Analysing 2015 Mvt variable; #Subset FastData2015 for all issued inventory
+```{r }
+table(FastData2015$MvT)
+FastIssue2015 <- filter(FastData2015, MvT %in% c("201", "221", "261", "291"))
+
+# Convert all issued quantities to postive numbers for ease of analysis
+FastIssue2015$Quantity <- FastIssue2015$Quantity * -1
+
+head(FastIssue2015)
 
 ```
-#calculating transactions per month
+
+
+#calculating transactions per month for 2011 - 2014  
 ```{r transactions.per.month}
 
 #Create Month and Year variables in FastIssue data
@@ -157,6 +181,9 @@ FastIssue$Year  <- year(FastIssue$Posting)
 head(FastIssue)
 
 #### Data Summaries
+#Unique nummber of materials in FastIssue
+length(unique(FastIssue$Material))
+
 #Number of times a material was issued by year and month
 month.summ <- 
         FastIssue %>%  
@@ -204,10 +231,41 @@ SumQuantity2 <- filter(SumQuantity,!(Material %in% c("495848","495885","495893",
 
 write.csv(SumQuantity2, "All Count.csv")
 
+```
 
-##################
-# Training Data #
-#################
+#calculating transactions per month for 2015. Prepare test data set
+```{r transactions.per.month}
+
+#Create Month and Year variables in FastIssue data
+FastIssue2015$Month <- month(FastIssue2015$Posting)
+FastIssue2015$Year  <- year(FastIssue2015$Posting)
+head(FastIssue2015)
+
+#### Preparing test data set by aggregating issuing transactions for the year
+#Unique nummber of materials in FastIssue2015
+length(unique(FastIssue2015$Material))
+
+#Number of times a material was issued by year
+Year.summ2015 <- 
+        FastIssue2015 %>%  
+        group_by(Material,Year) %>%
+        summarise(Quantities = sum(Quantity))
+
+# Dropping materials not stored in the Warehouse
+
+Year.summ2015 <- filter(Year.summ2015,!(Material %in% c("495848","495885","495893","578916",
+                                                     "578926","578931","593649","599965",
+                                                     "700148","720330", "724656", "724659")))
+# Write item.sum and count.summ 
+
+write.csv(Year.summ2015, "Year_summ2015.csv")
+
+```
+
+```{r}
+                      ############################
+                      ###   Training Data      ###
+                      ############################
 
 
 #### Create sample time-Series data sets. One for a material transacted over 48 months######
@@ -228,7 +286,7 @@ plot(Mat487999.ts)
 # This approach is to be used for all materials that have less than 48 months of transactions
 MatNo500076 <- filter(SumQuantity2[,-c(4:6)],(Material=="500076"))
 
-# Combine separate Year and Month columns into single Date Column
+# Create a new date column by combining the Year and Month columns into single Date Column
 MatNo500076$Date <- as.yearmon(paste(MatNo500076$Year, MatNo500076$Month), "%Y %m")
 
 #convert MatNo500076 into a regular time-series data using the zoo package
@@ -245,6 +303,36 @@ Mat500076.ts <- as.ts(zzMatNo500076)
 Mat500076.ts
 plot(Mat500076.ts)
 
+#### Reconfiguring the training data set for batch forecasting
+
+batch <- SumQuantity2[,-c(4:6)]
+batch$Date <- as.yearmon(paste(batch$Year, batch$Month), "%Y %m")
+batch.1 <- batch[, c("Material","Date","Quantities","Year","Month")]
+batch.1 <- batch.1[,1:3]
+
+# # batch <- FastIssue[,-c(2,4,6:11)]
+colnames(batch.1) <- c("MaterialID","Date","Quantity")
+
+# split data into groups by material id
+dataByMaterialId <- split(batch.1, batch.1$MaterialID)
+
+# create an xts object for each id
+# xts_list <- lapply(dataByMaterialId, function(id) {
+#   names <- list(NULL, paste0("Material.", id$MaterialID[1]))
+#   xts(id$Quantity, as.Date(id$Date, "%Y-%d-%m"), dimnames = names)
+# })
+
+xts_list <- lapply(dataByMaterialId, function(id) {
+  names <- list(NULL, paste0("Material.", id$MaterialID[1]))
+  xts(id$Quantity, as.yearmon(id$Date), dimnames = names)
+})
+
+# use do.call + merge to combine all your xts objects into one object
+# This code creates a data set with Month and Year in the first column and
+# the Materials summarized by monthly quantity in the other columns
+train_merged <- do.call(merge, c(xts_list, fill = 0))
+
+write.csv(train_merged, "train_merged.csv")
 
 ```
 
