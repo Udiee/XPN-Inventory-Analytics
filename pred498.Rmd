@@ -253,12 +253,12 @@ Year.summ2015 <-
 
 # Dropping materials not stored in the Warehouse
 
-Year.summ2015 <- filter(Year.summ2015,!(Material %in% c("495848","495885","495893","578916",
+test2015 <- filter(Year.summ2015,!(Material %in% c("495848","495885","495893","578916",
                                                      "578926","578931","593649","599965",
                                                      "700148","720330", "724656", "724659")))
 # Write item.sum and count.summ 
 
-write.csv(Year.summ2015, "Year_summ2015.csv")
+write.csv(test2015, "test2015.csv")
 
 ```
 
@@ -266,7 +266,6 @@ write.csv(Year.summ2015, "Year_summ2015.csv")
                       ############################
                       ###   Training Data      ###
                       ############################
-
 
 #### Create sample time-Series data sets. One for a material transacted over 48 months######
 #### and another for a material transacted over less than 48 months######
