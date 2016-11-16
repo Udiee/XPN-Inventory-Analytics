@@ -185,7 +185,7 @@ head(FastIssue2015)
 ```
 
 
-#calculating transactions per month for 2011 - 2014  
+#Calculating transactions per month for 2011 - 2014  
 ```{r transactions.per.month}
 
 #Create Month and Year variables in FastIssue data
@@ -246,7 +246,7 @@ write.csv(SumQuantity2, "All Count.csv")
 
 ```
 
-#calculating transactions per month for 2015. Prepare test data set
+#Calculating transactions per month for 2015. Prepare test data set
 ```{r transactions.per.month}
 
 #Create Month and Year variables in FastIssue data
@@ -275,6 +275,7 @@ write.csv(test2015, "test2015.csv")
 
 ```
 
+#Prepare training data set
 ```{r}
                       ############################
                       ###   Training Data      ###
