@@ -8,13 +8,16 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
-setwd("C:/Users/Uduak/Dropbox/MSPA/498/Team XPN/Week3/Data")
+
+library(RCurl)
 library(lubridate)
 library(dplyr)
+library(knitr)
 library(stargazer)
 library(pastecs)
 library(zoo)
 library(forecast)
+library(xts)
 
 
 ```
@@ -23,13 +26,23 @@ library(forecast)
 
 ```{r read_data}
 
-data.2011 <- read.csv("2011 MVT Location Q.csv", stringsAsFactors = FALSE)
-data.2012 <- read.csv("2012 MVT Location Q.csv", stringsAsFactors = FALSE)
-data.2013 <- read.csv("2013 MVT Location Q.csv", stringsAsFactors = FALSE)
-data.2014 <- read.csv("2014 MVT Location Q.csv", stringsAsFactors = FALSE)
-data.2015 <- read.csv("2015 MVT Location Q.csv", stringsAsFactors = FALSE)
-FastMover <- read.csv("2015 Fast Mover Review.csv", stringsAsFactors = FALSE)
-FastMover2016 <- read.csv("2016 Fast Mover Review.csv", stringsAsFactors = FALSE)
+data11 <- getURL("https://raw.githubusercontent.com/Udiee/XPN-Inventory-Analytics/master/Data/2011%20MVT%20Location%20Q.csv")
+data.2011 <- read.csv(text=data11)
+
+data12 <- getURL("https://raw.githubusercontent.com/Udiee/XPN-Inventory-Analytics/master/Data/2012%20MVT%20Location%20Q.csv")
+data.2012 <- read.csv(text=data12)
+
+data13 <- getURL("https://raw.githubusercontent.com/Udiee/XPN-Inventory-Analytics/master/Data/2013%20MVT%20Location%20Q.csv")
+data.2013 <- read.csv(text=data13)
+
+data14 <- getURL("https://raw.githubusercontent.com/Udiee/XPN-Inventory-Analytics/master/Data/2014%20MVT%20Location%20Q.csv")
+data.2014 <- read.csv(text=data14)
+
+data15 <- getURL("https://raw.githubusercontent.com/Udiee/XPN-Inventory-Analytics/master/Data/2015%20MVT%20Location%20Q.csv")
+data.2015 <- read.csv(text=data15)
+
+FastMover <- read.csv(text=getURL("https://raw.githubusercontent.com/Udiee/XPN-Inventory-Analytics/master/Data/2015%20Fast%20Mover%20Review.csv"))
+# FastMover2016 <- read.csv("2016 Fast Mover Review.csv", stringsAsFactors = FALSE)
 
 ```
 
