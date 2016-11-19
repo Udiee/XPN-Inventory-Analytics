@@ -78,8 +78,8 @@ FastData2015 <- data.2015.clean[data.2015.clean$Fast=="Yes",]
 FastData$Fast <- NULL
 FastData2015$Fast <- NULL
 
-#converting Posting to standard data notation, setting quantity, Local Value and Group value to 
-# numeric data type
+#converting the Posting date to a standard date notation
+# and setting quantity, Local Value and Group value to numeric data type
 
 FastData$Posting <- gsub("\\.","-",FastData$Posting)
 FastData$Posting <- dmy(FastData$Posting)
@@ -286,6 +286,7 @@ write.csv(test2015, "test2015.csv")
 
 # Subset data for Material 487999 which has transactions covering the complete 48 months
 # This approach is to be used for all materials that have 48 months of transactions
+SumQuantity3 <- SumQuantity2[,-c(5,6)]
 MatNo487999 <- filter(SumQuantity2[,-c(4:6)],(Material=="487999"))
 # # Combine separate Year and Month columns into single Date Column
 # MatNo487999$Date <- as.yearmon(paste(MatNo487999$Year, MatNo500076$Month), "%Y %m")
@@ -294,6 +295,17 @@ MatNo487999 <- filter(SumQuantity2[,-c(4:6)],(Material=="487999"))
 Mat487999.ts <- ts(MatNo487999[,c(4)], start=c(2011, 1), end=c(2014, 12), frequency=12)
 Mat487999.ts
 plot(Mat487999.ts)
+
+
+# Monthly summary of 2015 test set
+FastIssue2015.month.summ <- 
+        FastIssue2015 %>%  
+        group_by(Material,Year,Month) %>%
+        summarise(issue.count = n(),Quantities = sum(Quantity))
+
+FastIssue2015.month.summ$Date <- as.yearmon(paste(FastIssue2015.month.summ$Year,
+                                                  FastIssue2015.month.summ$Month), "%Y %m")
+
 
 #Subset data for Material 500076 which has transactions covering 42 months
 # This approach is to be used for all materials that have less than 48 months of transactions
@@ -343,10 +355,173 @@ xts_list <- lapply(dataByMaterialId, function(id) {
 # use do.call + merge to combine all your xts objects into one object
 # This code creates a data set with Month and Year in the first column and
 # the Materials summarized by monthly quantity in the other columns
-train_merged <- do.call(merge, c(xts_list, fill = 0))
+train <- do.call(merge, c(xts_list, fill = 0))
 
-write.csv(train_merged, "train_merged.csv")
+write.csv(train, "train.csv")
 
 ```
 
-<!-- ``` -->
+```{r}
+generate.forecast <- function(material,train.start,test.start,test.end)
+{
+  
+  data.train.material <- batch[batch$Material== material,]
+  data.test.material  <- FastIssue2015.month.summ[FastIssue2015.month.summ$Material==material,]
+  
+  train.ts <- ts(data.train.material$Quantities, start=train.start, frequency = 12)
+  test.ts <- ts(data.test.material$Quantities, start=test.start, frequency = 12)
+  
+  
+  #model 1 :  Just use overall average
+  
+  all.month.mean <- mean(train.ts)
+  pred.ts <- rep(all.month.mean,12)
+  fcst.all.avg.rmse <- sqrt(mean(test.ts - pred.ts)^2)
+  fcst.avg <- ts(pred.ts,frequency = 12,start = test.start)
+  
+  
+  
+  #model 2 : Use monthly average
+  
+  month.mean.df <- 
+    data.train.material %>%
+    group_by(Month) %>%
+    summarise(month.mean = mean(issue.qty))
+  
+  
+  pred.ts <- ts(month.mean.df$month.mean,frequency = 12,start = test.start)
+  fcst.month.rmse <- sqrt(mean(test.ts - pred.ts)^2) 
+  fcst.mon.avg <- pred.ts
+  
+  
+  #Model 3 ( Auto.Arima)
+  
+  fit3 <- auto.arima(train.ts, stepwise=FALSE, approximation=FALSE)
+  fcst.arima.1 <- forecast(fit3,h=length(test.ts))
+  
+  pred.ts <-  fcst.arima.1$mean
+  arima.rmse <- sqrt(mean(test.ts - pred.ts)^2) 
+  
+  
+  #Model 4 stl
+  
+  fit4 <- stl(train.ts,s.window = 21,t.window = 21)
+  fcst.stl <- forecast(fit4, method="naive",h=length(test.ts))
+  
+  
+  pred.ts <-  fcst.stl$mean
+  stl.rmse <- sqrt(mean(test.ts - pred.ts)^2) 
+  
+  
+  #model 5 nnet
+  fit4 <- nnetar(train.ts)
+  fcst4 <- forecast(fit4,h=length(test.ts))
+  
+  pred.ts <- fcst4$mean
+  nnet.rmse <- sqrt(mean(test.ts - pred.ts)^2)
+  
+  
+  #model 5.1
+  fit5.1 <- hw(train.ts,damped=TRUE)
+  fcst5.1 <- forecast(fit5.1,h=length(test.ts))
+  sum(fcst5.1$mean)
+  
+  fit5.2 <- hw(train.ts)
+  fcst5.2 <- forecast(fit5.2,h=length(test.ts))
+  sum(fcst5.2$mean)
+  
+  
+  
+  fit5.3 <- ets(train.ts)
+  fcst5.3 <- forecast(fit5.3,h=length(test.ts))
+  sum(fcst5.3$mean)
+  
+  
+  fit5.4 <- ets(train.ts,damped=TRUE)
+  fcst5.4 <- forecast(fit5.4,h=length(test.ts))
+  sum(fcst5.4$mean)
+  
+  
+  
+  ############################################
+  
+  test.length <- length(test.ts)
+  rolling.yearly.sum <- rollapply(train.ts,12,sum,align="right")
+  
+  # model 6 forecast monthly data rolled into yearly and forecasted -- Arima
+  fit6 <- auto.arima(rolling.yearly.sum)
+  fcst6 <- forecast(fit6,h=12)
+  
+  # model 7 forecast monthly data rolled into yearly and forecasted -- STL
+  fit7 <- stl(rolling.yearly.sum,s.window = 12,t.window=12)
+  fcst7 <- forecast(fit7,h=12)
+  
+  # model 8 forecast monthly data rolled into yearly and forecasted -- HW
+  fit8 <- hw(rolling.yearly.sum,seasonal="additive")
+  fcst8 <- forecast(fit8,h=12)
+  fcst8$mean
+  
+  
+  # model 9  forecast monthly data rolled into yearly and forecasted -- ETS
+  fit9 <- ets(rolling.yearly.sum,damped = TRUE)
+  fcst9 <- forecast(fit9,h=12)
+  fcst9$mean
+  
+  
+  # model 10  forecast monthly data rolled into yearly and forecasted -- HW
+  fit10 <- hw(rolling.yearly.sum,damped = TRUE)
+  fcst10 <- forecast(fit10,h=12)
+  fcst10$mean
+  
+  
+  ###printing all forecast
+  
+  plot(test.ts)
+  lines(test.ts,col=2)
+  lines(window(fcst.avg,start =test.start, end = test.end),col=3)
+  lines(window(fcst.mon.avg,start =test.start, end = test.end),col=4)
+  lines(window(fcst.arima.1$mean,start =test.start, end = test.end),col=5)
+  lines(window(fcst.stl$mean,start =test.start, end = test.end),col=6)
+  lines(window(fcst4$mean,start =test.start, end = test.end),col=7)
+  lines(window(fcst5.3$mean,start =test.start, end = test.end),col=8)
+  legend("topright",lty=1, pch=2, col=2:8, cex = 0.5,
+         c("Test Fcst","Average" ,"Monthly Average","Arima","STL","NNetar","ETS"))
+  
+  
+  
+  
+  results.df <- data.frame( "Material" = c(material),
+                            "Avg.fcst.rmse" =c(fcst.all.avg.rmse),
+                            "Avg.monthly.fcst.rmse" = c(fcst.month.rmse),
+                            "Arima.rmse" = c(arima.rmse),
+                            "STL.rmse" = c(stl.rmse),
+                            "Nnet.rmse" = c(nnet.rmse),
+                            "Total.test.fcst" = c(sum(test.ts)),
+                            "Total.avg.fcst" = c(sum(fcst.avg)),
+                            "Total.month.avg.fcst" = c(sum(fcst.mon.avg)),
+                            "Total.Arima.fcst" = c(sum(fcst.arima.1$mean)),
+                            "Total.STL.fcst" = c(sum(fcst.stl$mean)),
+                            "Total.Nnet.fcst" = c(sum(fcst4$mean)),
+                            "Total.HW.Damped.Fcst" = c(sum(fcst5.1$mean)),
+                            "Total.HW.Fcst" = c(sum(fcst5.2$mean)),
+                            "Total.ets.Fcst" = c(sum(fcst5.3$mean)),
+                            "Total.ets.damped.Fcst" = c(sum(fcst5.4$mean)),
+                            "Total.Batch.Arima.Fcst" =  c(fcst6$mean[test.length]),
+                            "Total.Batch.STL.Fcst"  = c(fcst7$mean[test.length]),
+                            "Total.Batch.HW.Fcst" = c(fcst8$mean[test.length]),
+                            "Total.Batch.ETS.Fcst" = c(fcst9$mean[test.length]),
+                            "Total.Batch.HW.Damped.Fcst" = c(fcst10$mean[test.length]))
+  
+  
+  
+  results.df
+  
+}
+```
+
+```{r calling.generate.forecast}
+
+res <- generate.forecast(487999,c(2011,1),c(2015,1),c(2015,12))
+melt(res)
+
+```
