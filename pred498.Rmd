@@ -365,11 +365,32 @@ test2015Final <- b[,-c(4:6)]
 #Building the Forecast Models
 ``` {r}
 ###### Generating forecast models ##############
-generate.forecast <- function(material,train.start,test.start,test.end)
+#generate.forecast <- function(material,train.start,test.start,test.end)
+generate.forecast <- function(material)  
 {
   
   data.train.material <- trainFinal[trainFinal$Material== material,]
   data.test.material  <- test2015Final[test2015Final$Material==material,]
+  
+  ###added by sj --start
+  
+  start.year.train <- min(data.train.material$Year)
+  start.month.train <- min(data.train.material[data.train.material$Year == start.year.train,]$Month)
+
+  start.year.test <- min(data.test.material$Year)
+  start.month.test <- min(data.test.material[data.test.material$Year == start.year.test,]$Month)
+
+
+  end.year.test <- max(data.test.material$Year)
+  end.month.test <- max(data.test.material[data.test.material$Year == end.year.test,]$Month)
+
+  train.start <- c(start.year.train,start.month.train)
+  test.start <- c(start.year.test,start.month.test)
+  test.end <- c(end.year.test,end.month.test)
+
+  #### end added by sj
+  
+  
   
   train.ts <- ts(data.train.material$Quantities, start=train.start, frequency = 12)
   test.ts <- ts(data.test.material$Quantities, start=test.start, frequency = 12)
@@ -381,7 +402,6 @@ generate.forecast <- function(material,train.start,test.start,test.end)
   pred.ts <- rep(all.month.mean,12)
   fcst.all.avg.rmse <- sqrt(mean(test.ts - pred.ts)^2)
   fcst.avg <- ts(pred.ts,frequency = 12,start = test.start)
-  
   
   
   #model 2 : Use monthly average
@@ -492,7 +512,6 @@ generate.forecast <- function(material,train.start,test.start,test.end)
   
   
   
-  
   results.df <- data.frame( "Material" = c(material),
                             "Avg.fcst.rmse" =c(fcst.all.avg.rmse),
                             "Avg.monthly.fcst.rmse" = c(fcst.month.rmse),
@@ -520,11 +539,26 @@ generate.forecast <- function(material,train.start,test.start,test.end)
   results.df
   
 }
+
 ```
 
-```{r calling.generate.forecast}
+````{r calling.generate.forecast}
 
-res <- generate.forecast(487999,c(2011,1),c(2015,1),c(2015,12))
-melt(res)
+#res <- generate.forecast(487999,c(2011,1),c(2015,1),c(2015,12))
+#res <- generate.forecast(242061)
+#melt(res)
+
+#generating for all items
+
+all.result.df  <- generate.forecast(material.input <- unique(trainFinal$Material)[1]) # to initialize
+
+material.input <- unique(trainFinal$Material)[2:513] #change 20 for generating forecast for all items
+for (mat in material.input ) { 
+
+all.result.df <- rbind(all.result.df, generate.forecast(mat))
+
+}
+
+write.csv(all.result.df, "all.result.df.csv")
 
 ```
