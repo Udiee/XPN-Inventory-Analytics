@@ -18,6 +18,7 @@ library(pastecs)
 library(zoo)
 library(forecast)
 library(xts)
+library(reshape2)
 
 
 ```
@@ -144,7 +145,7 @@ anti_join(MvtMaterials,FastMoverMaterials)
 paste0("Number of Transactional Materials :" , length(unique(FastData2015$Material)))
 paste0("Number of Fast Mover Materials :" , length(unique(FastMover$Material)))
 MvtMaterials2015 <- as.data.frame(sort(unique(FastData2015$Material)))
-FastMoverMaterials <- as.data.frame(sort(FastMover$Material))
+FastMoverMaterials <- as.data.frame(sort(unique(FastMover$Material)))
 colnames(MvtMaterials2015) <- "Materials"
 colnames(FastMoverMaterials) <- "Materials"
 
@@ -188,18 +189,28 @@ head(FastIssue2015)
 #Calculating transactions per month for 2011 - 2014  
 ```{r transactions.per.month}
 
+#Prepare FastIssue train for Modeling
+FastIssue2 <- FastIssue[,-c(2,4,6:11)]
+FastMonthlyQuant <- expand.grid(unique(FastIssue2$Material),
+                                as.Date(min(FastIssue2$Posting):max(FastIssue2$Posting), 
+                                        origin = '1970-01-01'))
+names(FastMonthlyQuant) <- c('Material', 'Posting')
+
+FastMonthlyQuant <- merge(FastMonthlyQuant, FastIssue2, by = c('Material', 'Posting'), all.x = T)
+FastMonthlyQuant$Quantity[is.na(FastMonthlyQuant$Quantity)] <- 0
+
 #Create Month and Year variables in FastIssue data
-FastIssue$Month <- month(FastIssue$Posting)
-FastIssue$Year  <- year(FastIssue$Posting)
-head(FastIssue)
+FastMonthlyQuant$Month <- month(FastMonthlyQuant$Posting)
+FastMonthlyQuant$Year  <- year(FastMonthlyQuant$Posting)
+head(FastMonthlyQuant)
 
 #### Data Summaries
 #Unique nummber of materials in FastIssue
-length(unique(FastIssue$Material))
+length(unique(FastMonthlyQuant$Material))
 
 #Number of times a material was issued by year and month
 month.summ <- 
-        FastIssue %>%  
+        FastMonthlyQuant %>%  
         group_by(Material,Year,Month) %>%
         summarise(issue.count = n())
 
@@ -213,7 +224,7 @@ item.summ <-
         
 # Total number of times material appeared in the data set (in descending order)
 data.item <-
-        FastIssue %>%
+        FastMonthlyQuant %>%
         group_by(Material) %>%
         summarise(count = n()) %>%
         arrange(desc(count))
@@ -226,7 +237,7 @@ count.summ <- month.summ %>%
 
 # Summary of material quantities issued by month and year
 quantity.summ <-
-        FastIssue %>%
+        FastMonthlyQuant %>%
         group_by(Material,Year,Month) %>%
         summarise(Quantities = sum(Quantity)) %>%
         arrange(desc(Quantities))
@@ -237,36 +248,80 @@ SumQuantity <- left_join(count.summ,quantity.summ,by=c("Material","Year","Month"
 
 # Dropping materials not stored in the Warehouse
 
-SumQuantity2 <- filter(SumQuantity,!(Material %in% c("495848","495885","495893","578916",
+train <- filter(SumQuantity,!(Material %in% c("495848","495885","495893","578916",
                                                      "578926","578931","593649","599965",
                                                      "700148","720330", "724656", "724659")))
 # Write item.sum and count.summ 
 
-write.csv(SumQuantity2, "All Count.csv")
+write.csv(train, "train.csv")
 
 ```
 
 #Calculating transactions per month for 2015. Prepare test data set
 ```{r transactions.per.month}
 
-#Create Month and Year variables in FastIssue data
-FastIssue2015$Month <- month(FastIssue2015$Posting)
-FastIssue2015$Year  <- year(FastIssue2015$Posting)
-head(FastIssue2015)
+#Preapare FastIssue2015 for Model testing
+FastIssue2015.2 <- FastIssue2015[,-c(2,4,6:9)]
+FastMonthlyQuant2015 <- expand.grid(unique(FastIssue2015.2$Material),
+                                as.Date(min(FastIssue2015.2$Posting):max(FastIssue2015.2$Posting), 
+                                        origin = '1970-01-01'))
+names(FastMonthlyQuant2015) <- c('Material', 'Posting')
+
+FastMonthlyQuant2015 <- merge(FastMonthlyQuant2015, FastIssue2015.2, 
+                              by = c('Material', 'Posting'), all.x = T)
+FastMonthlyQuant2015$Quantity[is.na(FastMonthlyQuant2015$Quantity)] <- 0
+
+
+#Create Month and Year variables in FastMonthlyQuant2015 data
+FastMonthlyQuant2015$Month <- month(FastMonthlyQuant2015$Posting)
+FastMonthlyQuant2015$Year  <- year(FastMonthlyQuant2015$Posting)
+head(FastMonthlyQuant2015)
 
 #### Preparing test data set by aggregating issuing transactions for the year
 #Unique nummber of materials in FastIssue2015
-length(unique(FastIssue2015$Material))
+length(unique(FastMonthlyQuant2015$Material))
 
-#Number of times a material was issued by year
-Year.summ2015 <- 
-        FastIssue2015 %>%  
-        group_by(Material,Year) %>%
-        summarise(Quantities = sum(Quantity))
+#Number of times a material was issued by year and month
+month.summ2015 <- 
+        FastMonthlyQuant2015 %>%  
+        group_by(Material,Year,Month) %>%
+        summarise(issue.count = n())
+
+
+#Total number of months a material was issued (in descending order)
+item.summ2015 <- 
+        month.summ2015 %>%
+        group_by(Material) %>%
+        summarise(month.count = n()) %>%
+        arrange(desc(month.count))
+        
+# Total number of times material appeared in the data set (in descending order)
+data.item2015 <-
+        FastMonthlyQuant2015 %>%
+        group_by(Material) %>%
+        summarise(count = n()) %>%
+        arrange(desc(count))
+
+# A data set consisting of a join of all monthly summaries
+count.summ2015 <- month.summ2015 %>%
+                  left_join(item.summ2015, by="Material") %>%
+                  left_join(data.item2015, by ="Material") %>%
+                  arrange(desc(month.count),Material,Year,Month)
+
+# Summary of material quantities issued by month and year
+quantity.summ2015 <-
+        FastMonthlyQuant2015 %>%
+        group_by(Material,Year,Month) %>%
+        summarise(Quantities = sum(Quantity)) %>%
+        arrange(desc(Quantities))
+
+
+# Full data set containing summary of quantities issued by Year and month
+SumQuantity2015 <- left_join(count.summ2015,quantity.summ2015,by=c("Material","Year","Month"))
 
 # Dropping materials not stored in the Warehouse
 
-test2015 <- filter(Year.summ2015,!(Material %in% c("495848","495885","495893","578916",
+test2015 <- filter(SumQuantity2015,!(Material %in% c("495848","495885","495893","578916",
                                                      "578926","578931","593649","599965",
                                                      "700148","720330", "724656", "724659")))
 # Write item.sum and count.summ 
@@ -275,98 +330,46 @@ write.csv(test2015, "test2015.csv")
 
 ```
 
-#Prepare training data set
+#Matching up the training set and test set
 ```{r}
-                      ############################
-                      ###   Training Data      ###
-                      ############################
+### Check to ensure materials in training set match with materials in the test set ####
+paste0("Number of Train Materials :" , length(unique(train$Material)))
+paste0("Number of Test Materials :" , length(unique(test2015$Material)))
+train.materials <- as.data.frame(sort(unique(train$Material)))
+test.materials <- as.data.frame(sort(unique(test2015$Material)))
+colnames(train.materials) <- "Material"
+colnames(test.materials) <- "Material"
 
-#### Create sample time-Series data sets. One for a material transacted over 48 months######
-#### and another for a material transacted over less than 48 months######
+# Test Materials that are not in the training set
+TestNotTrain <- anti_join(test.materials,train.materials)
 
-# Subset data for Material 487999 which has transactions covering the complete 48 months
-# This approach is to be used for all materials that have 48 months of transactions
-SumQuantity3 <- SumQuantity2[,-c(5,6)]
-MatNo487999 <- filter(SumQuantity2[,-c(4:6)],(Material=="487999"))
-# # Combine separate Year and Month columns into single Date Column
-# MatNo487999$Date <- as.yearmon(paste(MatNo487999$Year, MatNo500076$Month), "%Y %m")
+# Materials in the training set that are not in the test set
+TrainNotTest <- anti_join(train.materials,test.materials)
 
-#convert MatNo487999 data frame into time-series data
-Mat487999.ts <- ts(MatNo487999[,c(4)], start=c(2011, 1), end=c(2014, 12), frequency=12)
-Mat487999.ts
-plot(Mat487999.ts)
+#Subsetting training and test set so that all the materials in the training set are the same 
+# materials that are in the test set
 
+a <- subset(train, !(train$Material %in% TrainNotTest$Material))
+b <- subset(test2015, !(test2015$Material %in% TestNotTrain$Material))
 
-# Monthly summary of 2015 test set
-FastIssue2015.month.summ <- 
-        FastIssue2015 %>%  
-        group_by(Material,Year,Month) %>%
-        summarise(issue.count = n(),Quantities = sum(Quantity))
+# Checking that the materials are now the same
+paste0("Number of Train Materials :" , length(unique(a$Material)))
+paste0("Number of Test Materials :" , length(unique(b$Material)))
 
-FastIssue2015.month.summ$Date <- as.yearmon(paste(FastIssue2015.month.summ$Year,
-                                                  FastIssue2015.month.summ$Month), "%Y %m")
-
-
-#Subset data for Material 500076 which has transactions covering 42 months
-# This approach is to be used for all materials that have less than 48 months of transactions
-MatNo500076 <- filter(SumQuantity2[,-c(4:6)],(Material=="500076"))
-
-# Create a new date column by combining the Year and Month columns into single Date Column
-MatNo500076$Date <- as.yearmon(paste(MatNo500076$Year, MatNo500076$Month), "%Y %m")
-
-#convert MatNo500076 into a regular time-series data using the zoo package
-# Create zoo object
-zMatNo500076 <- zoo(MatNo500076$Quantities, as.yearmon(MatNo500076$Date))
-# create a zero width series consisting of 48 months
-gMatNo500076 <- as.yearmon(seq(as.numeric(as.yearmon("2011-01")),
-                as.numeric(as.yearmon("2014-12")), 1/12))
-
-# merge zMatNo500076 with the zero width series to fill in the missing months with 0s
-zzMatNo500076 <- merge(zMatNo500076, zoo(x=NULL,gMatNo500076), fill = 0)
-# convert to time series
-Mat500076.ts <- as.ts(zzMatNo500076)
-Mat500076.ts
-plot(Mat500076.ts)
-
-#### Reconfiguring the training data set for batch forecasting
-
-batch <- SumQuantity2[,-c(4:6)]
-batch$Date <- as.yearmon(paste(batch$Year, batch$Month), "%Y %m")
-batch.1 <- batch[, c("Material","Date","Quantities","Year","Month")]
-batch.1 <- batch.1[,1:3]
-
-# # batch <- FastIssue[,-c(2,4,6:11)]
-colnames(batch.1) <- c("MaterialID","Date","Quantity")
-
-# split data into groups by material id
-dataByMaterialId <- split(batch.1, batch.1$MaterialID)
-
-# create an xts object for each id
-# xts_list <- lapply(dataByMaterialId, function(id) {
-#   names <- list(NULL, paste0("Material.", id$MaterialID[1]))
-#   xts(id$Quantity, as.Date(id$Date, "%Y-%d-%m"), dimnames = names)
-# })
-
-xts_list <- lapply(dataByMaterialId, function(id) {
-  names <- list(NULL, paste0("Material.", id$MaterialID[1]))
-  xts(id$Quantity, as.yearmon(id$Date), dimnames = names)
-})
-
-# use do.call + merge to combine all your xts objects into one object
-# This code creates a data set with Month and Year in the first column and
-# the Materials summarized by monthly quantity in the other columns
-train <- do.call(merge, c(xts_list, fill = 0))
-
-write.csv(train, "train.csv")
+# Creating the final traininng and test set. Removing unwanted variables
+trainFinal <- a[,-c(4:6)]
+test2015Final <- b[,-c(4:6)]
 
 ```
 
-```{r}
+#Building the Forecast Models
+``` {r}
+###### Generating forecast models ##############
 generate.forecast <- function(material,train.start,test.start,test.end)
 {
   
-  data.train.material <- batch[batch$Material== material,]
-  data.test.material  <- FastIssue2015.month.summ[FastIssue2015.month.summ$Material==material,]
+  data.train.material <- trainFinal[trainFinal$Material== material,]
+  data.test.material  <- test2015Final[test2015Final$Material==material,]
   
   train.ts <- ts(data.train.material$Quantities, start=train.start, frequency = 12)
   test.ts <- ts(data.test.material$Quantities, start=test.start, frequency = 12)
@@ -386,7 +389,7 @@ generate.forecast <- function(material,train.start,test.start,test.end)
   month.mean.df <- 
     data.train.material %>%
     group_by(Month) %>%
-    summarise(month.mean = mean(issue.qty))
+    summarise(month.mean = mean(Quantities))
   
   
   pred.ts <- ts(month.mean.df$month.mean,frequency = 12,start = test.start)
