@@ -158,9 +158,6 @@ anti_join(MvtMaterials2015,FastMoverMaterials)
 ```
 
 
-
-
-
 #Analysing 2011-2014 Mvt variable; #Subset FastData for all issued inventory
 ```{r }
 table(FastData$MvT)
@@ -171,9 +168,10 @@ FastIssue$Quantity <- FastIssue$Quantity * -1
 
 head(FastIssue)
 
+
 ```
 
-#Analysing 2015 Mvt variable; #Subset FastData2015 for all issued inventory
+#Analysing 2015 Mvt variable; Subset FastData2015 for all issued inventory
 ```{r }
 table(FastData2015$MvT)
 FastIssue2015 <- filter(FastData2015, MvT %in% c("201", "221", "261", "291"))
@@ -359,6 +357,42 @@ paste0("Number of Test Materials :" , length(unique(b$Material)))
 # Creating the final traininng and test set. Removing unwanted variables
 trainFinal <- a[,-c(4:6)]
 test2015Final <- b[,-c(4:6)]
+
+# Data sets for data visualization
+# Compute correct issue counts per month
+FastIssue.summ <- FastIssue %>%
+        group_by(Material,Year,Month) %>%
+        summarise(issue.count = n())
+
+FastIssue.summ <- filter(FastIssue.summ,!(Material %in% c("495848","495885","495893","578916",
+                                                          "578926","578931","593649","599965",
+                                                          "700148","720330", "724656", "724659")))
+
+# Merge the correct issue count with the training data
+trainFinalMonthly <- trainFinal %>%  
+        group_by(Material,Year,Month) %>%
+        summarise(issue.count = n(),Quantity = sum(Quantities))
+
+trainFinalMonthly$Date <- as.yearmon(paste(trainFinalMonthly$Year,
+                                                  trainFinalMonthly$Month), "%Y%m")
+
+trainFinalIssue <- left_join(trainFinalMonthly,FastIssue.summ,by=c("Material","Year","Month"))
+trainFinalIssue$issue.count.y[is.na(trainFinalIssue$issue.count.y)] <- 0
+trainFinalIssue$issue.count.x <-  NULL
+colnames(trainFinalIssue)[6] <- "Issue.count"
+
+write.csv(trainFinalIssue, "trainFinalIssue.csv")
+
+# Test data for Visualization
+test2015FinalMonthly <- test2015Final%>%  
+        group_by(Material,Year,Month) %>%
+        summarise(issue.count = n(),Quantity = sum(Quantities))
+
+test2015FinalMonthly$Date <- as.yearmon(paste(test2015FinalMonthly$Year,
+                                                  test2015FinalMonthly$Month), "%Y%m")
+test2015FinalMonthly$issue.count <- NULL
+
+write.csv(test2015FinalMonthly, "test2015FinalMonthly.csv")
 
 ```
 
@@ -559,6 +593,32 @@ all.result.df <- rbind(all.result.df, generate.forecast(mat))
 
 }
 
-write.csv(all.result.df, "all.result.df.csv")
+```
+
+```{r accuracy}
+all.result.df$MAE <- rep(1,nrow(all.result.df))
+all.result.df$best.algo <- rep("",nrow(all.result.df))
+
+for (i in 1:nrow(all.result.df)) {
+  total.fcsts <- all.result.df[i,8:ncol(all.result.df)]
+  test.fcst <- all.result.df[i,]$Total.test.fcst
+  total.fcsts.mae <- abs(all.result.df[i,8:(ncol(all.result.df)-2)] - test.fcst)
+  min.col <- apply(total.fcsts.mae,1,which.min)
+  min.val <- total.fcsts.mae[min.col]
+  all.result.df[i,]$best.algo <- colnames(total.fcsts.mae)[min.col]
+  all.result.df[i,]$MAE <- min.val
+  
+}
+
+write.csv(all.result.df, "allresult.csv")
 
 ```
+
+#Connecting Tableau and R
+```{r}
+#install a package Rserve.
+install.packages("Rserve")
+
+#start the Rserve
+library(Rserve)
+Rserve(arg="--no-save")
