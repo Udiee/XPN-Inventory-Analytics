@@ -374,26 +374,25 @@ FastIssue.summ <- filter(FastIssue.summ,!(Material %in% c("495848","495885","495
 # Merge the correct issue count with the training data
 trainFinalMonthly <- trainFinal %>%  
         group_by(Material,Year,Month) %>%
-        summarise(issue.count = n(),Quantity = sum(Quantities))
+        summarise(Quantity = sum(Quantities))
 
 trainFinalMonthly$Date <- as.yearmon(paste(trainFinalMonthly$Year,
                                                   trainFinalMonthly$Month), "%Y%m")
 
 trainFinalIssue <- left_join(trainFinalMonthly,FastIssue.summ,by=c("Material","Year","Month"))
-trainFinalIssue$issue.count.y[is.na(trainFinalIssue$issue.count.y)] <- 0
-trainFinalIssue$issue.count.x <-  NULL
-colnames(trainFinalIssue)[6] <- "issue.count"
+trainFinalIssue$issue.count[is.na(trainFinalIssue$issue.count)] <- 0
+# trainFinalIssue$issue.count <-  NULL
+# colnames(trainFinalIssue)<- "issue.count"
 
 write.csv(trainFinalIssue, "trainFinalIssue.csv")
 
 # Test data for Visualization
 test2015FinalMonthly <- test2015Final%>%  
         group_by(Material,Year,Month) %>%
-        summarise(issue.count = n(),Quantity = sum(Quantities))
+        summarise(Quantity = sum(Quantities))
 
 test2015FinalMonthly$Date <- as.yearmon(paste(test2015FinalMonthly$Year,
                                                   test2015FinalMonthly$Month), "%Y%m")
-test2015FinalMonthly$issue.count <- NULL
 
 write.csv(test2015FinalMonthly, "test2015FinalMonthly.csv")
 
@@ -580,15 +579,16 @@ generate.forecast <- function(material)
 
 ```{r calling.generate.forecast}
 
-#res <- generate.forecast(487999,c(2011,1),c(2015,1),c(2015,12))
-#res <- generate.forecast(242061)
-#melt(res)
+# res <- generate.forecast(487999,c(2011,1),c(2015,1),c(2015,12))
+# res <- generate.forecast(242061)
+# melt(res)
 
 #generating for all items
 
 all.result.df  <- generate.forecast(material.input <- unique(trainFinal$Material[1])) # to initialize
 
-material.input <- unique(trainFinal$Material)[2:513] #change 20 for generating forecast for all items
+material.input <- unique(trainFinal$Material[2:513])#change 20 for generating forecast for all items
+
 for (mat in material.input ) { 
 
 all.result.df <- rbind(all.result.df, generate.forecast(mat))
@@ -612,8 +612,8 @@ for (i in 1:nrow(all.result.df)) {
   
 }
 
-all.result.df[[1]] <- paste(all.result.df[[1]],collapse = "")
-ModelResult <- as.data.frame(lapply(all.result.df,unlist))
+# all.result.df[[1]] <- paste(all.result.df[[1]],collapse = "")
+# ModelResult <- as.data.frame(lapply(all.result.df,unlist))
 
 write.csv(ModelResult, "ModelResult.csv")
 
