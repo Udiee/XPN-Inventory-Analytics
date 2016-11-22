@@ -587,7 +587,7 @@ generate.forecast <- function(material)
 
 all.result.df  <- generate.forecast(material.input <- unique(trainFinal$Material[1])) # to initialize
 
-material.input <- unique(trainFinal$Material[2:513])#change 20 for generating forecast for all items
+material.input <- unique(trainFinal$Material)[2:513]#change 20 for generating forecast for all items
 
 for (mat in material.input ) { 
 
@@ -608,14 +608,15 @@ for (i in 1:nrow(all.result.df)) {
   min.col <- apply(total.fcsts.mae,1,which.min)
   min.val <- total.fcsts.mae[min.col]
   all.result.df[i,]$best.algo <- colnames(total.fcsts.mae)[min.col]
-  all.result.df[i,]$MAE <- min.val
+  all.result.df[i,]$MAE <- min.val[1,1]
   
 }
 
 # all.result.df[[1]] <- paste(all.result.df[[1]],collapse = "")
 # ModelResult <- as.data.frame(lapply(all.result.df,unlist))
 
-write.csv(ModelResult, "ModelResult.csv")
+#write.csv(ModelResult, "ModelResult.csv")
+write.csv( all.result.df,"all.result.df.csv")
 
 ```
 
