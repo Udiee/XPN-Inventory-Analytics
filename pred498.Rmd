@@ -20,7 +20,6 @@ library(forecast)
 library(xts)
 library(reshape2)
 
-
 ```
 
 
@@ -105,7 +104,7 @@ FastData2015$Issue.Receipt <- ifelse(FastData2015$Quantity>=0,1,0)
 ```
 
 #column list
-```{r }
+```{r}
 str(FastData)
 str(FastMover)
 
@@ -125,7 +124,7 @@ sapply(FastData2015, function(x) {sum(is.na(x))})
 ```
 
 #Comparing Mvt Material variable (2011-2014) to Fast Mover (2015) Material variable
-```{r  }
+```{r }
 paste0("Number of Transactional Materials :" , length(unique(FastData$Material)))
 paste0("Number of Fast Mover Materials :" , length(unique(FastMover$Material)))
 MvtMaterials <- as.data.frame(sort(unique(FastData$Material)))
@@ -141,7 +140,7 @@ anti_join(MvtMaterials,FastMoverMaterials)
 
 ```
 #Comparing Mvt Material variable (2015) to Fast Mover (2015) Material variable
-```{r  }
+```{r}
 paste0("Number of Transactional Materials :" , length(unique(FastData2015$Material)))
 paste0("Number of Fast Mover Materials :" , length(unique(FastMover$Material)))
 MvtMaterials2015 <- as.data.frame(sort(unique(FastData2015$Material)))
@@ -159,12 +158,16 @@ anti_join(MvtMaterials2015,FastMoverMaterials)
 
 
 #Analysing 2011-2014 Mvt variable; #Subset FastData for all issued inventory
-```{r }
+```{r subset.fastdata}
 table(FastData$MvT)
 FastIssue <- filter(FastData, MvT %in% c("201", "221", "261", "291"))
 
 # Convert all issued quantities to postive numbers for ease of analysis
 FastIssue$Quantity <- FastIssue$Quantity * -1
+
+#Create Month and Year variables in FastIssue data
+FastIssue$Month <- month(FastIssue$Posting)
+FastIssue$Year  <- year(FastIssue$Posting)
 
 head(FastIssue)
 
@@ -172,7 +175,7 @@ head(FastIssue)
 ```
 
 #Analysing 2015 Mvt variable; Subset FastData2015 for all issued inventory
-```{r }
+```{r}
 table(FastData2015$MvT)
 FastIssue2015 <- filter(FastData2015, MvT %in% c("201", "221", "261", "291"))
 
@@ -197,7 +200,7 @@ names(FastMonthlyQuant) <- c('Material', 'Posting')
 FastMonthlyQuant <- merge(FastMonthlyQuant, FastIssue2, by = c('Material', 'Posting'), all.x = T)
 FastMonthlyQuant$Quantity[is.na(FastMonthlyQuant$Quantity)] <- 0
 
-#Create Month and Year variables in FastIssue data
+#Create Month and Year variables in Fast Issue Monthly Summary data
 FastMonthlyQuant$Month <- month(FastMonthlyQuant$Posting)
 FastMonthlyQuant$Year  <- year(FastMonthlyQuant$Posting)
 head(FastMonthlyQuant)
@@ -329,7 +332,7 @@ write.csv(test2015, "test2015.csv")
 ```
 
 #Matching up the training set and test set
-```{r}
+```{r matching.training.and.test.sets}
 ### Check to ensure materials in training set match with materials in the test set ####
 paste0("Number of Train Materials :" , length(unique(train$Material)))
 paste0("Number of Test Materials :" , length(unique(test2015$Material)))
@@ -379,7 +382,7 @@ trainFinalMonthly$Date <- as.yearmon(paste(trainFinalMonthly$Year,
 trainFinalIssue <- left_join(trainFinalMonthly,FastIssue.summ,by=c("Material","Year","Month"))
 trainFinalIssue$issue.count.y[is.na(trainFinalIssue$issue.count.y)] <- 0
 trainFinalIssue$issue.count.x <-  NULL
-colnames(trainFinalIssue)[6] <- "Issue.count"
+colnames(trainFinalIssue)[6] <- "issue.count"
 
 write.csv(trainFinalIssue, "trainFinalIssue.csv")
 
@@ -397,7 +400,7 @@ write.csv(test2015FinalMonthly, "test2015FinalMonthly.csv")
 ```
 
 #Building the Forecast Models
-``` {r}
+```{r Modeling}
 ###### Generating forecast models ##############
 #generate.forecast <- function(material,train.start,test.start,test.end)
 generate.forecast <- function(material)  
@@ -499,7 +502,6 @@ generate.forecast <- function(material)
   sum(fcst5.4$mean)
   
   
-  
   ############################################
   
   test.length <- length(test.ts)
@@ -576,7 +578,7 @@ generate.forecast <- function(material)
 
 ```
 
-````{r calling.generate.forecast}
+```{r calling.generate.forecast}
 
 #res <- generate.forecast(487999,c(2011,1),c(2015,1),c(2015,12))
 #res <- generate.forecast(242061)
@@ -584,7 +586,7 @@ generate.forecast <- function(material)
 
 #generating for all items
 
-all.result.df  <- generate.forecast(material.input <- unique(trainFinal$Material)[1]) # to initialize
+all.result.df  <- generate.forecast(material.input <- unique(trainFinal$Material[1])) # to initialize
 
 material.input <- unique(trainFinal$Material)[2:513] #change 20 for generating forecast for all items
 for (mat in material.input ) { 
@@ -610,12 +612,15 @@ for (i in 1:nrow(all.result.df)) {
   
 }
 
-write.csv(all.result.df, "allresult.csv")
+all.result.df[[1]] <- paste(all.result.df[[1]],collapse = "")
+ModelResult <- as.data.frame(lapply(all.result.df,unlist))
+
+write.csv(ModelResult, "ModelResult.csv")
 
 ```
 
 #Connecting Tableau and R
-```{r}
+```{r connecting tableau.and.r}
 #install a package Rserve.
 install.packages("Rserve")
 
